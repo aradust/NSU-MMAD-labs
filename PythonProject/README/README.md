@@ -28,9 +28,10 @@
 Инструкция по запуску кода через IDE Pycharm Community
 
 1) Склонировать репозиторий с гитхаба командой git clone https://github.com/aradust/NSU-MMAD-labs.git
-2) Открыть проект в IDE Pycharm Community.
-3) Запустить файл PythonProject/src/main.py
-4) Аналогичые результаты можно найти в директории PythonProject/TablesAndPictures
+2) Перейти в ветку lab1-Main
+3) Открыть проект в IDE Pycharm Community.
+4) Запустить файл PythonProject/src/main.py
+5) Аналогичые результаты можно найти в директории PythonProject/TablesAndPictures
 
 Все файлы с исходным кодом находятся в директории PythonProject/src
 В директории PythonProject/examples находятся примеры написания кода и выполнения аналогичных заданий.
