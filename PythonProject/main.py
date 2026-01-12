@@ -1,437 +1,222 @@
-# Инструкция по запуску в браузерном jupiter: Создать Notebook, Выбрать ядро Pyodide, Скачать файл
-# с датасетом, назвать его forest_fires.csv, положить его в View -> File Browser.
-# Можно запускать
-import numpy as np
+# Инструкция по запуску: загрузить приложенный файл data.csv в браузерный jupiter. Скопировать в блокнот этот код. выбрать ядро Pyodide
+# Программа будет работать несколько минут
+
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.metrics import mean_squared_error, r2_score
-from sklearn.model_selection import GridSearchCV
+from sklearn.ensemble import RandomForestClassifier, IsolationForest
+from sklearn.feature_selection import VarianceThreshold
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
-# Загружаем датасет
-url = "https://archive.ics.uci.edu/ml/machine-learning-databases/forest-fires/forestfires.csv"
-df = pd.read_csv(url)
+from sklearn.svm import SVC
+from datetime import datetime
 
-# Посмотрим, какие признаки категориальные:
-print(df.dtypes)
-print("        ")
+# Считаем правильно данные
+df = pd.read_csv("data/data.csv", header = None)
 
-# Категориальными являются month, day, выкинем их
-df_num = df.drop(columns=["month", "day"])
+# Посмотрим на данные:
+df.head()
+df.info()
+df.describe()
 
-# Применим логарифмическое преобразование как указано в информации о датасете
-df_num['area_log'] = np.log1p(df_num['area'])
-# Построим линейную регрессию
-
-# Признаки
-features = df_num.drop(columns=['area', 'area_log'])
-# Цель
-target = df_num['area_log']
-
-# Разделим на тестовые данные и данные для обучения
-features_train, features_test, target_train, target_test = train_test_split(
-    features,
-    target,
-    test_size=0.25,
-    random_state=42
-)
-
-target_test_original = np.expm1(target_test)  # Обратное преобразование для тестовых данных
-
-# Обучаем модель линейной регрессии
-model_lr = LinearRegression()
-model_lr.fit(features_train, target_train)
-
-# Предсказываем
-target_pred_log = model_lr.predict(features_test)
-
-# Обратное преобразование для получения предсказаний в исходной шкале
-target_pred = np.expm1(target_pred_log)  # exp(x) - 1
-
-# Посчитаем MSE (средний квадрат ошибки), RMSE (корень из среднего квадрата ошибки), R² (коэффициент детерминации)
-mse = mean_squared_error(target_test_original, target_pred)
-rmse = np.sqrt(mse)
-r2 = r2_score(target_test_original, target_pred)
-print ("-----------------------------------------------")
-print("Линейная регрессия")
-print (f"MSE: {mse}")
-print(f"RMSE = {rmse:.4f}")
-print(f"R²   = {r2:.4f}")
-print ("-----------------------------------------------")
-print("        ")
-# Получили значения MSE: = 9682.017068063538, RMSE = 98.3972, R² = -0.0219
-# RMSE говорит нам о том, что в среднем модель ошибается на 98 гектаров при предсказании площади выгоревшего леса.
-# Коэффициент детерминации < 0, ошибка модели больше дисперсии.
-
-# Теперь будем строить решение методом бустинга.
-
-# Обучаем модель градиентным бустингом
-grb = GradientBoostingRegressor(random_state=42)
-grb.fit(features_train, target_train)
-
-# Предсказываем
-target_pred_log = grb.predict(features_test)
-
-# Обратное преобразование для получения предсказаний в исходной шкале
-target_pred = np.expm1(target_pred_log)  # exp(x) - 1
-
-# Посчитаем MSE (средний квадрат ошибки), RMSE (корень из среднего квадрата ошибки), R² (коэффициент детерминации)
-mse = mean_squared_error(target_test_original, target_pred)
-rmse = np.sqrt(mse)
-r2 = r2_score(target_test_original, target_pred)
-
-print ("-----------------------------------------------")
-print ("Градиентный бустинг")
-print (f"MSE: {mse}")
-print(f"RMSE = {rmse:.4f}")
-print(f"R²   = {r2:.4f}")
-print ("-----------------------------------------------")
-print("        ")
-# Получили значения MSE: = 9665.818787831624, RMSE = 98.3149, R² = -0.0202
-# RMSE говорит нам о том, что в среднем модель ошибается на 98 гектаров при предсказании площади выгоревшего леса.
-# Коэффициент детерминации < 0, ошибка модели больше дисперсии.
-# Будем подбирать оптимальные параметры
-
-param_grid = {
-    'n_estimators': [100, 200, 300],
-    'max_depth': [1, 2, 3], # Стандартные значения
-    'learning_rate': [0.05, 0.1, 0.2] # Стандартные значения
-}
-
-grid_search = GridSearchCV(
-    GradientBoostingRegressor(random_state=42),
-    param_grid,
-    cv=5, # Делим train на 5 частей, 4 -> обучение, 1 -> проверка
-    scoring='neg_mean_squared_error', # Перебираем все комбинации параметров и выбираем оптимальные значения по метрике MSE
-    n_jobs=-1 # Обучаемся на всех потоках.
-)
-
-# Обучаем модель на оптимальных параметрах
-grid_search.fit(features_train, target_train)
-
-# Посмотрим на оптимальные параметры и применим их в нашей моделе
-print("Оптимальные параметры:", grid_search.best_params_)
-opti_model = grid_search.best_estimator_
-
-# Посчитаем метрики с оптимальными параметрами
-target_pred_opti_log = opti_model.predict(features_test)
-target_pred_opti = np.expm1(target_pred_opti_log)
-mse_opti = mean_squared_error(target_test_original, target_pred_opti)
-rmse_opti = np.sqrt(mse_opti)
-r2_opti = r2_score(target_test_original, target_pred_opti)
-
-print ("-----------------------------------------------")
-print("Градиентный бустинг с оптимальными параметрами")
-print (f"Оптимальный MSE: {mse_opti}")
-print(f"Оптимальный RMSE = {rmse_opti:.4f}")
-print(f"Оптимальный R²   = {r2_opti:.4f}")
-print ("-----------------------------------------------")
-print("        ")
-# Получили значения MSE: = 9679.681994809138, RMSE = 98.3854, R² = -0.0217
-# RMSE говорит нам о том, что в среднем модель ошибается на 98 гектаров при предсказании площади выгоревшего леса.
-# Коэффициент детерминации < 0, ошибка модели больше дисперсии.
-
-# Теперь применим one hot encoding для категориальных признаков
-
-df_ohe = pd.get_dummies(df, columns=['month', 'day'], drop_first=True)
-df_ohe['area_log'] = np.log1p(df_ohe['area'])
-
-# Признаки
-features = df_ohe.drop(columns=['area', 'area_log'])
-# Цель
-target = df_ohe['area_log']
-
-# Разделим на тестовые данные и данные для обучения
-features_train, features_test, target_train, target_test = train_test_split(
-    features,
-    target,
-    test_size=0.25,
-    random_state=42
-)
-
-target_test_original = np.expm1(target_test)  # Обратное преобразование для тестовых данных
-
-# Обучаем модель линейной регрессии
-model_lr.fit(features_train, target_train)
-
-# Предсказываем
-target_pred_log = model_lr.predict(features_test)
-
-# Обратное преобразование для получения предсказаний в исходной шкале
-target_pred = np.expm1(target_pred_log)  # exp(x) - 1
-
-# Посчитаем MSE (средний квадрат ошибки), RMSE (корень из среднего квадрата ошибки), R² (коэффициент детерминации)
-mse = mean_squared_error(target_test_original, target_pred)
-rmse = np.sqrt(mse)
-r2 = r2_score(target_test_original, target_pred)
-print ("-----------------------------------------------")
-print("Линейная регрессия с OHE")
-print (f"MSE: {mse}")
-print(f"RMSE = {rmse:.4f}")
-print(f"R²   = {r2:.4f}")
-print ("-----------------------------------------------")
-print("        ")
-# Получили значения MSE: = 9656.18774285676, RMSE = 98.2659, R² = -0.0192
-# RMSE говорит нам о том, что в среднем модель ошибается на 98 гектаров при предсказании площади выгоревшего леса.
-# Коэффициент детерминации < 0, ошибка модели больше дисперсии.
-
-# Теперь будем строить решение методом бустинга.
-
-# Обучаем модель градиентным бустингом
-grb.fit(features_train, target_train)
-
-# Предсказываем
-target_pred_log = grb.predict(features_test)
-
-# Обратное преобразование для получения предсказаний в исходной шкале
-target_pred = np.expm1(target_pred_log)  # exp(x) - 1
-
-# Посчитаем MSE (средний квадрат ошибки), RMSE (корень из среднего квадрата ошибки), R² (коэффициент детерминации)
-mse = mean_squared_error(target_test_original, target_pred)
-rmse = np.sqrt(mse)
-r2 = r2_score(target_test_original, target_pred)
-
-print ("-----------------------------------------------")
-print ("Градиентный бустинг c OHE")
-print (f"MSE: {mse}")
-print(f"RMSE = {rmse:.4f}")
-print(f"R²   = {r2:.4f}")
-print ("-----------------------------------------------")
-print("        ")
-# Получили значения MSE: = 9688.284886392059, RMSE = 98.4291, R² = -0.0226
-# RMSE говорит нам о том, что в среднем модель ошибается на 98 гектаров при предсказании площади выгоревшего леса.
-# Коэффициент детерминации < 0, ошибка модели больше дисперсии.
-# Будем подбирать оптимальные параметры
-
-param_grid = {
-    'n_estimators': [100, 200, 300],
-    'max_depth': [1, 2, 3], # Стандартные значения
-    'learning_rate': [0.05, 0.1, 0.2] # Стандартные значения
-}
-
-grid_search = GridSearchCV(
-    GradientBoostingRegressor(random_state=42),
-    param_grid,
-    cv=5, # Делим train на 5 частей, 4 -> обучение, 1 -> проверка
-    scoring='neg_mean_squared_error', # Перебираем все комбинации параметров и выбираем оптимальные значения по метрике MSE
-    n_jobs=-1 # Обучаемся на всех потоках.
-)
-
-# Обучаем модель на оптимальных параметрах
-grid_search.fit(features_train, target_train)
-
-# Посмотрим на оптимальные параметры и применим их в нашей моделе
-print("Оптимальные параметры:", grid_search.best_params_)
-opti_model = grid_search.best_estimator_
-
-# Посчитаем метрики с оптимальными параметрами
-target_pred_opti_log = opti_model.predict(features_test)
-target_pred_opti = np.expm1(target_pred_opti_log)
-mse_opti = mean_squared_error(target_test_original, target_pred_opti)
-rmse_opti = np.sqrt(mse_opti)
-r2_opti = r2_score(target_test_original, target_pred_opti)
-
-print ("-----------------------------------------------")
-print("Градиентный бустинг с оптимальными параметрами OHE")
-print (f"Оптимальный MSE: {mse_opti}")
-print(f"Оптимальный RMSE = {rmse_opti:.4f}")
-print(f"Оптимальный R²   = {r2_opti:.4f}")
-print ("-----------------------------------------------")
-print("        ")
-# Получили значения MSE: = 9673.816546478298, RMSE = 98.3556, R² = -0.0211
-# RMSE говорит нам о том, что в среднем модель ошибается на 98 гектаров при предсказании площади выгоревшего леса.
-# Коэффициент детерминации < 0, ошибка модели больше дисперсии.
-# Теперь сделаем target encoding
-
-df_target = df.copy()
-df_target['area_log'] = np.log1p(df['area'])
-
-features = df_target.drop(columns=['area', 'area_log'])
-target = df_target['area_log']
+features = df.iloc[:,1:-1]
+target = df.iloc[:,-1]
 
 features_train, features_test, target_train, target_test = train_test_split(
-    features, target, test_size=0.25, random_state=42
+    features, target,
+    test_size=0.5,
+    random_state=42,
+    stratify=target
 )
 
-global_mean = target_train.mean()
-
-#Для month
-month_mean = target_train.groupby(features_train['month']).mean()
-
-features_train['month_te'] = features_train['month'].map(month_mean)
-features_test['month_te'] = features_test['month'].map(month_mean)
-
-features_train['month_te'] = features_train['month_te'].fillna(global_mean)
-features_test['month_te']  = features_test['month_te'].fillna(global_mean)
-
-# Для day
-month_day = target_train.groupby(features_train['day']).mean()
-
-features_train['day_te'] = features_train['day'].map(month_day)
-features_test['day_te'] = features_test['day'].map(month_day)
-
-features_train['day_te'] = features_train['day_te'].fillna(global_mean)
-features_test['day_te']  = features_test['day_te'].fillna(global_mean)
-
-# Теперь убираем категориальные признаки
-features_train = features_train.drop(columns=['month', 'day'])
-features_test = features_test.drop(columns=['month', 'day'])
-
-target_test_original = np.expm1(target_test)  # Обратное преобразование для тестовых данных
-
-# Обучаем модель линейной регрессии
-model_lr = LinearRegression()
-model_lr.fit(features_train, target_train)
-
-# Предсказываем
-target_pred_log = model_lr.predict(features_test)
-
-# Обратное преобразование для получения предсказаний в исходной шкале
-target_pred = np.expm1(target_pred_log)  # exp(x) - 1
-
-# Посчитаем MSE (средний квадрат ошибки), RMSE (корень из среднего квадрата ошибки), R² (коэффициент детерминации)
-mse = mean_squared_error(target_test_original, target_pred)
-rmse = np.sqrt(mse)
-r2 = r2_score(target_test_original, target_pred)
-print ("-----------------------------------------------")
-print("Линейная регрессия с TE")
-print (f"MSE: {mse}")
-print(f"RMSE = {rmse:.4f}")
-print(f"R²   = {r2:.4f}")
-print ("-----------------------------------------------")
-print("        ")
-# Получили значения MSE: = 9684.84606443, RMSE = 98.4116, R² = -0.0222
-# RMSE говорит нам о том, что в среднем модель ошибается на 98 гектаров при предсказании площади выгоревшего леса.
-# Коэффициент детерминации < 0, ошибка модели больше дисперсии.
-
-# Теперь будем строить решение методом бустинга.
-
-# Обучаем модель градиентным бустингом
-grb = GradientBoostingRegressor(random_state=42)
-grb.fit(features_train, target_train)
-
-# Предсказываем
-target_pred_log = grb.predict(features_test)
-
-# Обратное преобразование для получения предсказаний в исходной шкале
-target_pred = np.expm1(target_pred_log)  # exp(x) - 1
-
-# Посчитаем MSE (средний квадрат ошибки), RMSE (корень из среднего квадрата ошибки), R² (коэффициент детерминации)
-mse = mean_squared_error(target_test_original, target_pred)
-rmse = np.sqrt(mse)
-r2 = r2_score(target_test_original, target_pred)
-
-print ("-----------------------------------------------")
-print ("Градиентный бустинг с TE")
-print (f"MSE: {mse}")
-print(f"RMSE = {rmse:.4f}")
-print(f"R²   = {r2:.4f}")
-print ("-----------------------------------------------")
-print("        ")
-# Получили значения MSE: = 9678.310018331262, RMSE = 98.3784, R² = -0.0215
-# RMSE говорит нам о том, что в среднем модель ошибается на 98 гектаров при предсказании площади выгоревшего леса.
-# Коэффициент детерминации < 0, ошибка модели больше дисперсии.
-# Будем подбирать оптимальные параметры
-
-param_grid = {
-    'n_estimators': [100, 200, 300],
-    'max_depth': [1, 2, 3], # Стандартные значения
-    'learning_rate': [0.05, 0.1, 0.2] # Стандартные значения
-}
-
-grid_search = GridSearchCV(
-    GradientBoostingRegressor(random_state=42),
-    param_grid,
-    cv=5, # Делим train на 5 частей, 4 -> обучение, 1 -> проверка
-    scoring='neg_mean_squared_error', # Перебираем все комбинации параметров и выбираем оптимальные значения по метрике MSE
-    n_jobs=-1 # Обучаемся на всех потоках.
-)
-
-# Обучаем модель на оптимальных параметрах
-grid_search.fit(features_train, target_train)
-
-# Посмотрим на оптимальные параметры и применим их в нашей моделе
-print("Оптимальные параметры:", grid_search.best_params_)
-opti_model = grid_search.best_estimator_
-
-# Посчитаем метрики с оптимальными параметрами
-target_pred_opti_log = opti_model.predict(features_test)
-target_pred_opti = np.expm1(target_pred_opti_log)
-mse_opti = mean_squared_error(target_test_original, target_pred_opti)
-rmse_opti = np.sqrt(mse_opti)
-r2_opti = r2_score(target_test_original, target_pred_opti)
-
-print ("-----------------------------------------------")
-print("Градиентный бустинг с оптимальными параметрами TE")
-print (f"Оптимальный MSE: {mse_opti}")
-print(f"Оптимальный RMSE = {rmse_opti:.4f}")
-print(f"Оптимальный R²   = {r2_opti:.4f}")
-print ("-----------------------------------------------")
-print("        ")
-# Получили значения MSE: = 9668.8464409964, RMSE = 98.3303, R² = -0.0205
-# RMSE говорит нам о том, что в среднем модель ошибается на 98 гектаров при предсказании площади выгоревшего леса.
-# Коэффициент детерминации < 0, ошибка модели больше дисперсии.
-# Точность OHE и TE на этом датасете практически одинакова
-
-# Визуализируем
-
+# Алгоритмы KNN и SVM требуют нормализации функций.
 scaler = StandardScaler()
-X_scaled = scaler.fit_transform(features_train)
+features_train_scaled = scaler.fit_transform(features_train)
+features_test_scaled = scaler.transform(features_test)
 
-pca = PCA(n_components=2)
-X_pca = pca.fit_transform(X_scaled)
+# Алгоритм KNN
+knn = KNeighborsClassifier()
 
-plt.figure(figsize=(7, 6))
-sc = plt.scatter(
-    X_pca[:, 0],
-    X_pca[:, 1],
-    c=target_train,
-    cmap='viridis',
-    alpha=0.7
-)
-plt.colorbar(sc, label='area_log')
-plt.xlabel('PC1')
-plt.ylabel('PC2')
-plt.title('Объекты в пространстве первых двух главных компонент')
-plt.grid(True)
-plt.show()
+param_grid_knn = {
+    "n_neighbors": [3, 5, 7, 9],
+    "weights": ["uniform", "distance"]
+}
 
-lr_pca = LinearRegression()
-lr_pca.fit(X_pca, target_train)
+grid_knn = GridSearchCV(knn, param_grid_knn, cv=5, scoring="accuracy")
+grid_knn.fit(features_train_scaled, target_train)
+print ("--------------------------------")
+print("KNN оптимальные параметры:", grid_knn.best_params_)
+print("KNN CV accuracy:", grid_knn.best_score_)
+print ("--------------------------------")
 
-gb_pca = GradientBoostingRegressor(random_state=42)
-gb_pca.fit(X_pca, target_train)
+# Алгоритм RandomForest
+rf = RandomForestClassifier(random_state=42)
 
-x_min, x_max = X_pca[:, 0].min() - 1, X_pca[:, 0].max() + 1
-y_min, y_max = X_pca[:, 1].min() - 1, X_pca[:, 1].max() + 1
+param_grid_rf = {
+    "n_estimators": [100, 200],
+    "max_depth": [None, 10, 20]
+}
 
-xx, yy = np.meshgrid(
-    np.linspace(x_min, x_max, 200),
-    np.linspace(y_min, y_max, 200)
-)
+grid_rf = GridSearchCV(rf, param_grid_rf, cv=5, scoring="accuracy")
+grid_rf.fit(features_train, target_train)
+print("RF оптимальные параметры:", grid_rf.best_params_)
+print("RF CV accuracy:", grid_rf.best_score_)
+print ("--------------------------------")
 
-grid = np.c_[xx.ravel(), yy.ravel()]
+# SVM с RBF ядром
 
-Z_lr = lr_pca.predict(grid).reshape(xx.shape)
-Z_gb = gb_pca.predict(grid).reshape(xx.shape)
+svm = SVC(kernel="rbf")
 
-plt.figure(figsize=(7, 6))
-plt.contourf(xx, yy, Z_lr, cmap='viridis', alpha=0.8)
-plt.scatter(X_pca[:, 0], X_pca[:, 1], c=target_train, cmap='viridis', edgecolor='k', s=20)
-plt.colorbar(label='area_log')
-plt.xlabel('PC1')
-plt.ylabel('PC2')
-plt.title('Линейная регрессия в PCA-пространстве')
-plt.show()
+param_grid_svm = {
+    "C": [0.1, 1, 10],
+    "gamma": ["scale", "auto"]
+}
 
-plt.figure(figsize=(7, 6))
-plt.contourf(xx, yy, Z_gb, cmap='viridis', alpha=0.8)
-plt.scatter(X_pca[:, 0], X_pca[:, 1], c=target_train, cmap='viridis', edgecolor='k', s=20)
-plt.colorbar(label='area_log')
-plt.xlabel('PC1')
-plt.ylabel('PC2')
-plt.title('Градиентный бустинг в PCA-пространстве')
-plt.show()
+grid_svm = GridSearchCV(svm, param_grid_svm, cv=5, scoring="accuracy")
+grid_svm.fit(features_train_scaled, target_train)
+
+print("SVM оптимальные параметры:", grid_svm.best_params_)
+print("SVM CV accuracy:", grid_svm.best_score_)
+print ("--------------------------------")
+
+# лучший KNN
+knn_best = grid_knn.best_estimator_
+target_pred_knn = knn_best.predict(features_test_scaled)
+print("KNN test accuracy:", accuracy_score(target_test, target_pred_knn))
+print(classification_report(target_test, target_pred_knn))
+print ("--------------------------------")
+
+# лучший RF
+rf_best = grid_rf.best_estimator_
+target_pred_rf = rf_best.predict(features_test)
+print("RF test accuracy:", accuracy_score(target_test, target_pred_rf))
+print(classification_report(target_test, target_pred_rf))
+print ("--------------------------------")
+
+# лучший SVM
+svm_best = grid_svm.best_estimator_
+target_pred_svm = svm_best.predict(features_test_scaled)
+print("SVM test accuracy:", accuracy_score(target_test, target_pred_svm))
+print(classification_report(target_test, target_pred_svm))
+print ("--------------------------------")
+
+# Судя по результатам понимаем, что лучше всего здесь подходит классификатор RF.  SVM с RBF ядром и
+# KNN показывают меньшую точность. Сравним эти классификаторы на очищенных данных.
+
+# Теперь очистим данные и проделаем то же самое. Сначала удалим шумовые данные, затем неинформативные признаки.
+# ----------------- последовательность: шумовые -> неинформативные -----------------
+
+# Для удаления шумовых данных используем IsolationForest
+
+start = datetime.now()
+
+iso = IsolationForest(contamination=0.05, random_state=42)  # 5% выбросов
+outliers = iso.fit_predict(features_train)
+features_train_clean = features_train[outliers == 1]
+target_train_clean = target_train[outliers == 1]
+
+# Теперь удалим неинформативные признаки, используем VarianceThreshold
+selector = VarianceThreshold(threshold=1e-5)
+features_train_clean = selector.fit_transform(features_train_clean)
+features_test_clean = selector.transform(features_test)
+assert features_train_clean.shape[1] == features_test_clean.shape[1], \
+    f"Ошибка: количество признаков не совпадает! Train: {features_train_clean.shape[1]}, Test: {features_test_clean.shape[1]}"
+
+# Масштабирование
+scaler = StandardScaler()
+features_train_scaled = scaler.fit_transform(features_train_clean)
+features_test_scaled = scaler.transform(features_test_clean)
+
+# KNN
+param_grid_knn = {"n_neighbors": [3, 5, 7, 9], "weights": ["uniform", "distance"]}
+grid_knn = GridSearchCV(KNeighborsClassifier(), param_grid_knn, cv=5, scoring='accuracy')
+grid_knn.fit(features_train_scaled, target_train_clean)
+knn_best = grid_knn.best_estimator_
+target_pred_knn = knn_best.predict(features_test_scaled)
+
+# RandomForest
+param_grid_rf = {"n_estimators": [100, 200], "max_depth": [10, 20, None]}
+grid_rf = GridSearchCV(RandomForestClassifier(random_state=42), param_grid_rf, cv=5, scoring='accuracy')
+grid_rf.fit(features_train_clean, target_train_clean)
+rf_best = grid_rf.best_estimator_
+target_pred_rf = rf_best.predict(features_test_clean)
+
+# SVM
+param_grid_svm = {"C": [0.1, 1, 10], "gamma": ["scale", "auto"]}
+grid_svm = GridSearchCV(SVC(kernel='rbf'), param_grid_svm, cv=5, scoring='accuracy')
+grid_svm.fit(features_train_scaled, target_train_clean)
+svm_best = grid_svm.best_estimator_
+target_pred_svm = svm_best.predict(features_test_scaled)
+
+print("шумные данные -> неинформативные признаки")
+print("KNN accuracy:", accuracy_score(target_test, target_pred_knn))
+print(classification_report(target_test, target_pred_knn))
+print("--------------------------------")
+print("RF accuracy:", accuracy_score(target_test, target_pred_rf))
+print(classification_report(target_test, target_pred_rf))
+print("--------------------------------")
+print("SVM accuracy:", accuracy_score(target_test, target_pred_svm))
+print(classification_report(target_test, target_pred_svm))
+end = datetime.now()
+print(f"Время выполнения: {end - start}")
+print("--------------------------------")
+
+# ----------------- последовательность: неинформативные -> шумовые -----------------
+
+# Сначала удаляем неинформативные признаки
+start = datetime.now()
+
+selector = VarianceThreshold(threshold=1e-5)
+features_train_clean2 = selector.fit_transform(features_train)
+features_test_clean2 = selector.transform(features_test)
+
+# Потом удаляем шумовые данные
+iso = IsolationForest(contamination=0.05, random_state=42)
+outliers = iso.fit_predict(features_train_clean2)
+features_train_clean2 = features_train_clean2[outliers == 1]
+target_train_clean2 = target_train[outliers == 1]
+assert features_train_clean2.shape[1] == features_test_clean2.shape[1], \
+    f"Ошибка: количество признаков не совпадает! Train: {features_train_clean2.shape[1]}, Test: {features_test_clean2.shape[1]}"
+
+# Масштабирование
+scaler = StandardScaler()
+features_train_scaled2 = scaler.fit_transform(features_train_clean2)
+features_test_scaled2 = scaler.transform(features_test_clean2)
+
+# KNN
+param_grid_knn = {"n_neighbors": [3, 5, 7, 9], "weights": ["uniform", "distance"]}
+grid_knn = GridSearchCV(KNeighborsClassifier(), param_grid_knn, cv=5, scoring='accuracy')
+grid_knn.fit(features_train_scaled2, target_train_clean2)
+knn_best = grid_knn.best_estimator_
+target_pred_knn = knn_best.predict(features_test_scaled2)
+
+# RandomForest
+param_grid_rf = {"n_estimators": [100, 200], "max_depth": [10, 20, None]}
+grid_rf = GridSearchCV(RandomForestClassifier(random_state=42), param_grid_rf, cv=5, scoring='accuracy')
+grid_rf.fit(features_train_clean2, target_train_clean2)
+rf_best = grid_rf.best_estimator_
+target_pred_rf = rf_best.predict(features_test_clean2)
+
+# SVM
+param_grid_svm = {"C": [0.1, 1, 10], "gamma": ["scale", "auto"]}
+grid_svm = GridSearchCV(SVC(kernel='rbf'), param_grid_svm, cv=5, scoring='accuracy')
+grid_svm.fit(features_train_scaled2, target_train_clean2)
+svm_best = grid_svm.best_estimator_
+target_pred_svm = svm_best.predict(features_test_scaled2)
+
+print("неинформативные признаки -> шумные данные")
+print("KNN accuracy:", accuracy_score(target_test, target_pred_knn))
+print(classification_report(target_test, target_pred_knn))
+print("--------------------------------")
+print("RF accuracy:", accuracy_score(target_test, target_pred_rf))
+print(classification_report(target_test, target_pred_rf))
+print("--------------------------------")
+print("SVM accuracy:", accuracy_score(target_test, target_pred_svm))
+print(classification_report(target_test, target_pred_svm))
+end = datetime.now()
+print(f"Время выполнения: {end - start}")
+print("--------------------------------")
+
+# Общий вывод: на этом датасете очистка данных не дает существенного прироста в точности для всех моделей. Порядок удаления "грязных данных"
+# здесь тоже не дает особой разницы. Во всех случаях наилучшим классификатором является RF.
+# Замечание: идейно время выполнения немного меньше, когда сначала удаляются неинформативные признаки, так как меньше признаков для расчёта.
